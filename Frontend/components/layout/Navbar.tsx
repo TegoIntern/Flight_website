@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { isLoggedIn as getIsLoggedIn } from "@/lib/auth";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -19,14 +20,14 @@ const primaryNavTextClass =
 
 export default function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(
-    () => typeof window !== "undefined" && !!localStorage.getItem("user"),
+    () => getIsLoggedIn(),
   );
   const [aboutOpen, setAboutOpen] = useState(false);
   const aboutRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const syncAuthState = () => {
-      setIsLoggedIn(!!localStorage.getItem("user"));
+      setIsLoggedIn(getIsLoggedIn());
     };
 
     const handleClickOutside = (event: MouseEvent) => {

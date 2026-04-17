@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { buildUserFromLogin, saveStoredUser } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    localStorage.setItem("user", JSON.stringify({ email }));
+    saveStoredUser(buildUserFromLogin(email));
     window.dispatchEvent(new Event("authchange"));
 
     setLoading(false);
@@ -84,6 +85,9 @@ export default function LoginPage() {
           <Link href="/signup" className="font-semibold text-blue-700">
             Sign up
           </Link>
+        </p>
+        <p className="mt-3 text-center text-sm text-slate-500">
+          Role access is determined after login from your account record.
         </p>
       </div>
     </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { buildUserFromSignup, saveStoredUser } from "@/lib/auth";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function SignupPage() {
     }
 
     setError("");
-    localStorage.setItem("user", JSON.stringify({ email: contact }));
+    saveStoredUser(buildUserFromSignup(contact));
     localStorage.setItem("signupContact", contact);
     window.dispatchEvent(new Event("authchange"));
     router.push("/dashboard");
@@ -90,6 +91,9 @@ export default function SignupPage() {
           <Link href="/login" className="font-semibold text-blue-700 hover:text-blue-900">
             Log in
           </Link>
+        </p>
+        <p className="mt-3 text-center text-sm text-slate-500">
+          New accounts are created as employees by default.
         </p>
       </div>
     </div>

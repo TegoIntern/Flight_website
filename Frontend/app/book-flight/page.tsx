@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   CalendarDaysIcon,
@@ -10,6 +11,7 @@ import {
 import FlightCard from "@/components/flights/FlightCard";
 import StaggeredReveal from "@/components/ui/StaggeredReveal";
 import { submitTravelRequest } from "@/lib/approval-requests";
+import { getStoredUser, isLoggedIn } from "@/lib/auth";
 import type { FlightOffer } from "@/lib/amadeus";
 
 type SearchTab = "stays" | "flights";
@@ -120,6 +122,7 @@ export default function BookingPage() {
   const [requestRooms, setRequestRooms] = useState("");
   const [requestReason, setRequestReason] = useState("");
   const [requestSubmitted, setRequestSubmitted] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -131,6 +134,21 @@ export default function BookingPage() {
 
     setActiveTab("flights");
   }, [searchParams]);
+
+  useEffect(() => {
+    const syncLoggedInState = () => {
+      setLoggedIn(isLoggedIn());
+    };
+
+    window.addEventListener("authchange", syncLoggedInState);
+    window.addEventListener("focus", syncLoggedInState);
+    syncLoggedInState();
+
+    return () => {
+      window.removeEventListener("authchange", syncLoggedInState);
+      window.removeEventListener("focus", syncLoggedInState);
+    };
+  }, []);
 
   const handleFlightSearch = async () => {
     setLoading(true);
@@ -163,12 +181,9 @@ export default function BookingPage() {
       .map((name) => name.trim())
       .filter(Boolean);
 
-    const storedUser =
-      typeof window !== "undefined" ? localStorage.getItem("user") : null;
+    const storedUser = getStoredUser();
     const submittedBy = storedUser
-      ? (JSON.parse(storedUser) as { email?: string; name?: string }).name ??
-        (JSON.parse(storedUser) as { email?: string }).email ??
-        "Travel Coordinator"
+      ? storedUser.name ?? storedUser.email ?? "Travel Coordinator"
       : "Travel Coordinator";
 
     submitTravelRequest({
@@ -268,94 +283,108 @@ export default function BookingPage() {
                   </label>
                 </div>
 
-                <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-6">
-                  <div className="max-w-3xl">
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
-                      Request Travel
-                    </p>
-                    <h3 className="mt-2 text-2xl font-semibold text-slate-900">
-                      Submit a trip request for approval
-                    </h3>
-                    <p className="mt-3 text-slate-600">
-                      Add the basics here and send it into the approvals flow.
-                      Approvers can adjust the itinerary before confirming it.
-                    </p>
+                {loggedIn ? (
+                  <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-6">
+                    <div className="max-w-3xl">
+                      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
+                        Request Travel
+                      </p>
+                      <h3 className="mt-2 text-2xl font-semibold text-slate-900">
+                        Submit a trip request for approval
+                      </h3>
+                      <p className="mt-3 text-slate-600">
+                        Add the basics here and send it into the approvals flow.
+                        Approvers can adjust the itinerary before confirming it.
+                      </p>
+                    </div>
+
+                    <form
+                      onSubmit={handleTravelRequestSubmit}
+                      className="mt-6 grid gap-4"
+                    >
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <SearchField
+                          icon={<UserIcon className="h-6 w-6" />}
+                          label="Traveler names"
+                          value={requestNames}
+                          onChange={setRequestNames}
+                          placeholder="Jordan Lee, Avery Patel"
+                        />
+                        <SearchField
+                          icon={<CalendarDaysIcon className="h-6 w-6" />}
+                          label="Dates"
+                          value={requestDates}
+                          onChange={setRequestDates}
+                          placeholder="Apr 18 - Apr 20"
+                        />
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <SearchField
+                          icon={<MapPinIcon className="h-6 w-6" />}
+                          label="Leaving from"
+                          value={requestFrom}
+                          onChange={setRequestFrom}
+                          placeholder="Chicago"
+                        />
+                        <SearchField
+                          icon={<MapPinIcon className="h-6 w-6" />}
+                          label="Going to"
+                          value={requestTo}
+                          onChange={setRequestTo}
+                          placeholder="New York"
+                        />
+                        <SearchField
+                          icon={<UserIcon className="h-6 w-6" />}
+                          label="Rooms needed"
+                          value={requestRooms}
+                          onChange={setRequestRooms}
+                          placeholder="2 rooms"
+                        />
+                      </div>
+
+                      <label className="grid gap-2">
+                        <span className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Notes
+                        </span>
+                        <textarea
+                          value={requestReason}
+                          onChange={(event) => setRequestReason(event.target.value)}
+                          placeholder="Add any details the approver should review."
+                          rows={4}
+                          className="resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-400"
+                        />
+                      </label>
+
+                      <div className="flex flex-wrap items-center gap-4">
+                        <button
+                          type="submit"
+                          className="rounded-2xl bg-blue-900 px-6 py-3 font-semibold text-white transition hover:bg-blue-800"
+                        >
+                          Send for approval
+                        </button>
+
+                        {requestSubmitted && (
+                          <p className="text-sm font-medium text-green-700">
+                            Travel request submitted to approvals.
+                          </p>
+                        )}
+                      </div>
+                    </form>
                   </div>
-
-                  <form
-                    onSubmit={handleTravelRequestSubmit}
-                    className="mt-6 grid gap-4"
-                  >
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <SearchField
-                        icon={<UserIcon className="h-6 w-6" />}
-                        label="Traveler names"
-                        value={requestNames}
-                        onChange={setRequestNames}
-                        placeholder="Jordan Lee, Avery Patel"
-                      />
-                      <SearchField
-                        icon={<CalendarDaysIcon className="h-6 w-6" />}
-                        label="Dates"
-                        value={requestDates}
-                        onChange={setRequestDates}
-                        placeholder="Apr 18 - Apr 20"
-                      />
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <SearchField
-                        icon={<MapPinIcon className="h-6 w-6" />}
-                        label="Leaving from"
-                        value={requestFrom}
-                        onChange={setRequestFrom}
-                        placeholder="Chicago"
-                      />
-                      <SearchField
-                        icon={<MapPinIcon className="h-6 w-6" />}
-                        label="Going to"
-                        value={requestTo}
-                        onChange={setRequestTo}
-                        placeholder="New York"
-                      />
-                      <SearchField
-                        icon={<UserIcon className="h-6 w-6" />}
-                        label="Rooms needed"
-                        value={requestRooms}
-                        onChange={setRequestRooms}
-                        placeholder="2 rooms"
-                      />
-                    </div>
-
-                    <label className="grid gap-2">
-                      <span className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Notes
-                      </span>
-                      <textarea
-                        value={requestReason}
-                        onChange={(event) => setRequestReason(event.target.value)}
-                        placeholder="Add any details the approver should review."
-                        rows={4}
-                        className="resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-400"
-                      />
-                    </label>
-
-                    <div className="flex flex-wrap items-center gap-4">
-                      <button
-                        type="submit"
-                        className="rounded-2xl bg-blue-900 px-6 py-3 font-semibold text-white transition hover:bg-blue-800"
-                      >
-                        Send for approval
-                      </button>
-
-                      {requestSubmitted && (
-                        <p className="text-sm font-medium text-green-700">
-                          Travel request submitted to approvals.
-                        </p>
-                      )}
-                    </div>
-                  </form>
-                </div>
+                ) : (
+                  <div className="rounded-[2rem] border border-dashed border-slate-300 bg-slate-50 p-6">
+                    <Link
+                      href="/login"
+                      className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700 transition hover:text-blue-900 hover:underline"
+                    >
+                      Sign In Required
+                    </Link>
+                    <h3 className="mt-2 text-2xl font-semibold text-slate-900">
+                      Log in to submit your trip request
+                    </h3>
+                  </div>
+                )}
               </section>
             )}
 

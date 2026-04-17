@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
+import { getStoredUser, saveStoredUser } from "@/lib/auth";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -11,13 +12,12 @@ export default function SettingsPage() {
       return "";
     }
 
-    const storedUser = localStorage.getItem("user");
+    const storedUser = getStoredUser();
     const storedContact = localStorage.getItem("signupContact");
 
     if (storedUser) {
-      const parsedUser = JSON.parse(storedUser) as { email?: string };
-      if (parsedUser.email) {
-        return parsedUser.email;
+      if (storedUser.email) {
+        return storedUser.email;
       }
     }
 
@@ -47,8 +47,13 @@ export default function SettingsPage() {
 
   const handleSave = (event: React.FormEvent) => {
     event.preventDefault();
+    const currentUser = getStoredUser();
 
-    localStorage.setItem("user", JSON.stringify({ email }));
+    saveStoredUser({
+      ...(currentUser ?? {}),
+      email,
+      role: currentUser?.role ?? "employee",
+    });
     localStorage.setItem("signupContact", phone || email);
     window.dispatchEvent(new Event("authchange"));
     setMessage("Settings updated.");
@@ -108,6 +113,16 @@ export default function SettingsPage() {
                   placeholder="(555) 555-5555"
                   className="rounded-2xl border border-slate-200 px-4 py-4 text-slate-900 outline-none transition focus:border-blue-700"
                 />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="font-medium text-slate-800">Account Role</span>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-700">
+                  {getStoredUser()?.role === "approver" ? "Approver" : "Employee"}
+                </div>
+                <p className="text-sm text-slate-500">
+                  Role access is managed by your backend account record.
+                </p>
               </label>
             </div>
 

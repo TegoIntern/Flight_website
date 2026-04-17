@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getStoredUser, isApprover } from "@/lib/auth";
 
 const quickActions = [
   { href: "/book-flight", label: "Book Flight" },
@@ -15,21 +16,16 @@ function formatWelcomeName() {
     return "Traveler";
   }
 
-  const storedUser = localStorage.getItem("user");
+  const storedUser = getStoredUser();
   const storedContact = localStorage.getItem("signupContact");
 
   if (storedUser) {
-    const parsedUser = JSON.parse(storedUser) as {
-      email?: string;
-      name?: string;
-    };
-
-    if (parsedUser.name?.trim()) {
-      return parsedUser.name.trim();
+    if (storedUser.name?.trim()) {
+      return storedUser.name.trim();
     }
 
-    if (parsedUser.email?.trim()) {
-      return parsedUser.email.split("@")[0];
+    if (storedUser.email?.trim()) {
+      return storedUser.email.split("@")[0];
     }
   }
 
@@ -44,10 +40,12 @@ function formatWelcomeName() {
 
 export default function Sidebar() {
   const [welcomeName, setWelcomeName] = useState("Traveler");
+  const [canViewApprovals, setCanViewApprovals] = useState(false);
 
   useEffect(() => {
     const syncWelcomeName = () => {
       setWelcomeName(formatWelcomeName());
+      setCanViewApprovals(isApprover());
     };
 
     window.addEventListener("authchange", syncWelcomeName);
@@ -84,15 +82,17 @@ export default function Sidebar() {
         <div />
 
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
-          {quickActions.map((action) => (
-            <Link
-              key={`${action.href}-${action.label}`}
-              href={action.href}
-              className="text-sm font-semibold uppercase tracking-[0.14em] text-blue-700 transition hover:text-blue-900"
-            >
-              {action.label}
-            </Link>
-          ))}
+          {quickActions.map((action) =>
+            action.href === "/approvals" && !canViewApprovals ? null : (
+              <Link
+                key={`${action.href}-${action.label}`}
+                href={action.href}
+                className="text-sm font-semibold uppercase tracking-[0.14em] text-blue-700 transition hover:text-blue-900"
+              >
+                {action.label}
+              </Link>
+            ),
+          )}
         </div>
 
         <Link

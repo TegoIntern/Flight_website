@@ -9,31 +9,56 @@ import {
   getApprovalRequests,
   type ApprovalRequest,
 } from "@/lib/approval-requests";
+import { getStoredUser, isApprover } from "@/lib/auth";
+import {
+  getTripStartDate,
+  isRequestOwnedByUser,
+  sortTripsByStartDate,
+} from "@/lib/travel";
 
-const upcomingTrips = [
-  {
-    traveler: "Jordan Lee",
-    route: "Chicago -> New York",
-    date: "Apr 18, 2026",
-    status: "Confirmed",
-  },
-  {
-    traveler: "Avery Patel",
-    route: "Dallas -> San Francisco",
-    date: "Apr 19, 2026",
-    status: "Awaiting approval",
-  },
-  {
-    traveler: "Morgan Chen",
-    route: "Atlanta -> Seattle",
-    date: "Apr 21, 2026",
-    status: "Ticketed",
-  },
-];
+function formatUserName() {
+  const currentUser = getStoredUser();
+
+  return currentUser?.name?.trim() || currentUser?.email?.split("@")[0] || "Traveler";
+}
+
+function getUpcomingTrips(trips: ApprovalRequest[]) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return trips.filter((trip) => {
+    const startDate = getTripStartDate(trip);
+
+    if (!startDate) {
+      return true;
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    return startDate >= today;
+  });
+}
+
+function getPreviousTrips(trips: ApprovalRequest[]) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return trips.filter((trip) => {
+    const startDate = getTripStartDate(trip);
+
+    if (!startDate) {
+      return false;
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    return startDate < today;
+  });
+}
 
 export default function DashboardPage() {
   const router = useRouter();
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
+  const [canApprove, setCanApprove] = useState(false);
+  const [userName, setUserName] = useState("Traveler");
 
   useEffect(() => {
     const user = localStorage.getItem("user");
@@ -42,29 +67,50 @@ export default function DashboardPage() {
       router.push("/login");
     }
 
-    const syncApprovalRequests = () => {
+    const syncDashboard = () => {
+      const currentUser = getStoredUser();
       setApprovalRequests(getApprovalRequests());
+      setCanApprove(isApprover());
+      setUserName(formatUserName());
+
+      if (!currentUser) {
+        router.push("/login");
+      }
     };
 
-    window.addEventListener("approvalchange", syncApprovalRequests);
-    window.addEventListener("focus", syncApprovalRequests);
-    syncApprovalRequests();
+    window.addEventListener("approvalchange", syncDashboard);
+    window.addEventListener("authchange", syncDashboard);
+    window.addEventListener("focus", syncDashboard);
+    syncDashboard();
 
     return () => {
-      window.removeEventListener("approvalchange", syncApprovalRequests);
-      window.removeEventListener("focus", syncApprovalRequests);
+      window.removeEventListener("approvalchange", syncDashboard);
+      window.removeEventListener("authchange", syncDashboard);
+      window.removeEventListener("focus", syncDashboard);
     };
   }, [router]);
 
   const pendingApprovals = approvalRequests.filter(
     (request) => request.status !== "Approved",
   );
+  const approvedTrips = approvalRequests.filter(
+    (request) => request.status === "Approved",
+  );
+  const visibleTrips = canApprove
+    ? sortTripsByStartDate(approvedTrips)
+    : sortTripsByStartDate(
+        approvedTrips.filter((request) =>
+          isRequestOwnedByUser(request, getStoredUser()),
+        ),
+      );
+  const upcomingTrips = getUpcomingTrips(visibleTrips);
+  const previousTrips = getPreviousTrips(visibleTrips);
 
-  const summaryCards = [
+  const approverSummaryCards = [
     {
       label: "Active Trips",
-      value: 24,
-      note: "6 departures in the next 72 hours",
+      value: visibleTrips.length,
+      note: "Approved trips currently visible to your team",
     },
     {
       label: "Pending Approvals",
@@ -86,181 +132,341 @@ export default function DashboardPage() {
     },
   ];
 
+  const employeeSummaryCards = [
+    {
+      label: "Upcoming Trips",
+      value: upcomingTrips.length,
+      note: "Your next approved trips",
+    },
+    {
+      label: "Previous Trips",
+      value: previousTrips.length,
+      note: "Trips already completed",
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10">
       <div className="mx-auto max-w-7xl space-y-8">
         <Sidebar />
-        <section className="space-y-8">
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {summaryCards.map((card) => (
-              <article
-                key={card.label}
-                className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
-              >
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
-                  {card.label}
-                </p>
-                <p className="mt-4 text-4xl font-bold text-slate-900">
-                  <CountUp
-                    end={card.value}
-                    duration={1.8}
-                    separator={card.separator}
-                    prefix={card.prefix}
-                    suffix={card.suffix}
-                  />
-                </p>
-                <p className="mt-3 text-sm leading-6 text-slate-600">
-                  {card.note}
-                </p>
-              </article>
-            ))}
-          </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
-                    Upcoming Travel
-                  </p>
-                  <h2 className="mt-2 text-3xl font-bold text-slate-900">
-                    Trips that need visibility this week
-                  </h2>
-                </div>
-                <Link
-                  href="/trips"
-                  className="text-sm font-semibold text-blue-700 transition hover:text-blue-900"
+        {canApprove ? (
+          <section className="space-y-8">
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+              {approverSummaryCards.map((card) => (
+                <article
+                  key={card.label}
+                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
                 >
-                  View all trips
-                </Link>
-              </div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
+                    {card.label}
+                  </p>
+                  <p className="mt-4 text-4xl font-bold text-slate-900">
+                    <CountUp
+                      end={card.value}
+                      duration={1.8}
+                      separator={card.separator}
+                      prefix={card.prefix}
+                      suffix={card.suffix}
+                    />
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    {card.note}
+                  </p>
+                </article>
+              ))}
+            </div>
 
-              <div className="mt-8 grid gap-4">
-                {upcomingTrips.map((trip) => (
-                  <div
-                    key={`${trip.traveler}-${trip.route}`}
-                    className="rounded-2xl border border-slate-200 px-5 py-4"
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {trip.traveler}
-                        </p>
-                        <p className="mt-1 text-slate-700">{trip.route}</p>
-                        <p className="mt-1 text-sm text-slate-500">{trip.date}</p>
-                      </div>
-                      <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-                        {trip.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <div className="grid gap-6">
+            <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
               <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
-                      Approval Queue
+                      Upcoming Travel
                     </p>
                     <h2 className="mt-2 text-3xl font-bold text-slate-900">
-                      Requests waiting on action
+                      Trips that need visibility this week
                     </h2>
                   </div>
                   <Link
-                    href="/approvals"
+                    href="/trips"
                     className="text-sm font-semibold text-blue-700 transition hover:text-blue-900"
                   >
-                    Open approvals
+                    View all trips
                   </Link>
                 </div>
 
-                <div className="mt-8 grid gap-3">
-                  {pendingApprovals.map((approval) => (
-                    <details
-                      key={approval.id}
-                      className="group rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                <div className="mt-8 grid gap-4">
+                  {visibleTrips.slice(0, 3).map((trip) => (
+                    <div
+                      key={trip.id}
+                      className="rounded-2xl border border-slate-200 px-5 py-4"
                     >
-                      <summary className="flex cursor-pointer list-none items-start justify-between gap-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                           <p className="font-semibold text-slate-900">
-                            {approval.title}
+                            {trip.travelers.join(", ")}
                           </p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {approval.route}
+                          <p className="mt-1 text-slate-700">{trip.route}</p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {trip.travelDates}
                           </p>
                         </div>
-                        <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">
-                          {approval.status}
+                        <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+                          {trip.status}
                         </span>
-                      </summary>
-
-                      <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 text-sm text-slate-700">
-                        <div className="grid gap-2 md:grid-cols-2">
-                          <p>
-                            <span className="font-semibold text-slate-900">
-                              Submitted by:
-                            </span>{" "}
-                            {approval.submittedBy}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-slate-900">
-                              Dates:
-                            </span>{" "}
-                            {approval.travelDates}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-slate-900">
-                              Room needed:
-                            </span>{" "}
-                            {approval.roomRequirement}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-slate-900">
-                              Travelers:
-                            </span>{" "}
-                            {approval.travelers.join(", ")}
-                          </p>
-                        </div>
-                        <p className="leading-7 text-slate-600">
-                          {approval.reason}
-                        </p>
                       </div>
-                    </details>
+                    </div>
                   ))}
 
-                  {pendingApprovals.length === 0 && (
+                  {visibleTrips.length === 0 && (
                     <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-600">
-                      No approvals are waiting right now.
+                      No approved team trips are visible yet.
                     </div>
                   )}
                 </div>
               </section>
 
-              <section className="rounded-[2rem] bg-blue-900 p-8 text-white shadow-sm">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200">
-                  Booking Operations
-                </p>
-                <h2 className="mt-2 text-3xl font-bold">
-                  Keep travelers moving without losing oversight.
-                </h2>
-                <p className="mt-4 text-lg leading-8 text-blue-100">
-                  Use the booking workspace to search policy-aligned flights,
-                  monitor team movement, and act on approvals before they slow
-                  down the trip.
-                </p>
-                <Link
-                  href="/book-flight"
-                  className="mt-6 inline-flex rounded-2xl bg-white px-5 py-3 font-semibold text-blue-900 transition hover:bg-slate-100"
-                >
-                  Open Booking Workspace
-                </Link>
-              </section>
+              <div className="grid gap-6">
+                <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
+                        Approval Queue
+                      </p>
+                      <h2 className="mt-2 text-3xl font-bold text-slate-900">
+                        Requests waiting on action
+                      </h2>
+                    </div>
+                    <Link
+                      href="/approvals"
+                      className="text-sm font-semibold text-blue-700 transition hover:text-blue-900"
+                    >
+                      Open approvals
+                    </Link>
+                  </div>
+
+                  <div className="mt-8 grid gap-3">
+                    {pendingApprovals.map((approval) => (
+                      <details
+                        key={approval.id}
+                        className="group rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                      >
+                        <summary className="flex cursor-pointer list-none items-start justify-between gap-4">
+                          <div>
+                            <p className="font-semibold text-slate-900">
+                              {approval.title}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-600">
+                              {approval.route}
+                            </p>
+                          </div>
+                          <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">
+                            {approval.status}
+                          </span>
+                        </summary>
+
+                        <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 text-sm text-slate-700">
+                          <div className="grid gap-2 md:grid-cols-2">
+                            <p>
+                              <span className="font-semibold text-slate-900">
+                                Submitted by:
+                              </span>{" "}
+                              {approval.submittedBy}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-slate-900">
+                                Dates:
+                              </span>{" "}
+                              {approval.travelDates}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-slate-900">
+                                Room needed:
+                              </span>{" "}
+                              {approval.roomRequirement}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-slate-900">
+                                Travelers:
+                              </span>{" "}
+                              {approval.travelers.join(", ")}
+                            </p>
+                          </div>
+                          <p className="leading-7 text-slate-600">
+                            {approval.reason}
+                          </p>
+                        </div>
+                      </details>
+                    ))}
+
+                    {pendingApprovals.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-600">
+                        No approvals are waiting right now.
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="rounded-[2rem] bg-blue-900 p-8 text-white shadow-sm">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200">
+                    Booking Operations
+                  </p>
+                  <h2 className="mt-2 text-3xl font-bold">
+                    Keep travelers moving without losing oversight.
+                  </h2>
+                  <p className="mt-4 text-lg leading-8 text-blue-100">
+                    Use the booking workspace to search policy-aligned flights,
+                    monitor team movement, and act on approvals before they slow
+                    down the trip.
+                  </p>
+                  <Link
+                    href="/book-flight"
+                    className="mt-6 inline-flex rounded-2xl bg-white px-5 py-3 font-semibold text-blue-900 transition hover:bg-slate-100"
+                  >
+                    Open Booking Workspace
+                  </Link>
+                </section>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        ) : (
+          <section className="space-y-8">
+            <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
+                Employee Dashboard
+              </p>
+              <h1 className="mt-3 text-4xl font-bold text-slate-900">
+                Your travel in one place, {userName}.
+              </h1>
+              <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">
+                View your upcoming trips, revisit previous travel, and jump
+                straight into booking flights or stays when you need a new trip.
+              </p>
+            </section>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              {employeeSummaryCards.map((card) => (
+                <article
+                  key={card.label}
+                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+                >
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
+                    {card.label}
+                  </p>
+                  <p className="mt-4 text-4xl font-bold text-slate-900">
+                    <CountUp end={card.value} duration={1.8} />
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    {card.note}
+                  </p>
+                </article>
+              ))}
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
+                      Upcoming Trips
+                    </p>
+                    <h2 className="mt-2 text-3xl font-bold text-slate-900">
+                      Your next approved travel
+                    </h2>
+                  </div>
+                  <Link
+                    href="/trips"
+                    className="text-sm font-semibold text-blue-700 transition hover:text-blue-900"
+                  >
+                    View trips
+                  </Link>
+                </div>
+
+                <div className="mt-8 grid gap-4">
+                  {upcomingTrips.slice(0, 3).map((trip) => (
+                    <article
+                      key={trip.id}
+                      className="rounded-2xl border border-slate-200 px-5 py-4"
+                    >
+                      <p className="font-semibold text-slate-900">{trip.title}</p>
+                      <p className="mt-1 text-slate-700">{trip.route}</p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {trip.travelDates}
+                      </p>
+                    </article>
+                  ))}
+
+                  {upcomingTrips.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-600">
+                      You do not have any upcoming approved trips yet.
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <div className="grid gap-6">
+                <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-700">
+                    Quick Actions
+                  </p>
+                  <h2 className="mt-2 text-3xl font-bold text-slate-900">
+                    Book and manage your travel
+                  </h2>
+                  <div className="mt-8 grid gap-3">
+                    <Link
+                      href="/book-flight"
+                      className="rounded-2xl border border-slate-200 px-5 py-4 font-semibold text-slate-900 transition hover:border-blue-300 hover:text-blue-700"
+                    >
+                      Book Flight
+                    </Link>
+                    <Link
+                      href="/book-flight?tab=stays"
+                      className="rounded-2xl border border-slate-200 px-5 py-4 font-semibold text-slate-900 transition hover:border-blue-300 hover:text-blue-700"
+                    >
+                      Book Stay
+                    </Link>
+                    <Link
+                      href="/trips"
+                      className="rounded-2xl border border-slate-200 px-5 py-4 font-semibold text-slate-900 transition hover:border-blue-300 hover:text-blue-700"
+                    >
+                      View Trips
+                    </Link>
+                  </div>
+                </section>
+
+                <section className="rounded-[2rem] bg-blue-900 p-8 text-white shadow-sm">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-200">
+                    Previous Trips
+                  </p>
+                  <h2 className="mt-2 text-3xl font-bold">
+                    See where you have already traveled.
+                  </h2>
+                  <div className="mt-6 space-y-3">
+                    {previousTrips.slice(0, 2).map((trip) => (
+                      <div
+                        key={trip.id}
+                        className="rounded-2xl bg-white/10 px-5 py-4"
+                      >
+                        <p className="font-semibold">{trip.title}</p>
+                        <p className="mt-1 text-sm text-blue-100">{trip.route}</p>
+                        <p className="mt-1 text-sm text-blue-100">
+                          {trip.travelDates}
+                        </p>
+                      </div>
+                    ))}
+
+                    {previousTrips.length === 0 && (
+                      <p className="text-blue-100">
+                        Your completed trip history will appear here.
+                      </p>
+                    )}
+                  </div>
+                </section>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

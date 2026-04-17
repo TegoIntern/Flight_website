@@ -1,34 +1,83 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import {
   getApprovalRequests,
   updateApprovalRequest,
   type ApprovalRequest,
 } from "@/lib/approval-requests";
+import { getStoredUser, isApprover } from "@/lib/auth";
 
 function toTravelerString(travelers: string[]) {
   return travelers.join(", ");
 }
 
 export default function ApprovalsPage() {
+  const router = useRouter();
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    const syncAccess = () => {
+      const currentUser = getStoredUser();
+
+      if (!currentUser) {
+        router.push("/login");
+        return;
+      }
+
+      setHasAccess(isApprover());
+      setIsReady(true);
+    };
+
     const syncApprovals = () => {
       setApprovals(getApprovalRequests());
     };
 
+    window.addEventListener("authchange", syncAccess);
     window.addEventListener("approvalchange", syncApprovals);
     window.addEventListener("focus", syncApprovals);
+    window.addEventListener("focus", syncAccess);
+    syncAccess();
     syncApprovals();
 
     return () => {
+      window.removeEventListener("authchange", syncAccess);
       window.removeEventListener("approvalchange", syncApprovals);
       window.removeEventListener("focus", syncApprovals);
+      window.removeEventListener("focus", syncAccess);
     };
-  }, []);
+  }, [router]);
+
+  if (!isReady) {
+    return null;
+  }
+
+  if (!hasAccess) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-6 py-10">
+        <div className="mx-auto max-w-6xl space-y-8">
+          <Sidebar />
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-700">
+              Approvals
+            </p>
+            <h1 className="mt-4 text-4xl font-bold text-slate-900">
+              Approval access is limited to approver accounts.
+            </h1>
+            <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
+              Employees can submit trip requests, but they cannot open or approve
+              items in the request queue.
+            </p>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   const handleFieldChange = (
     id: string,
